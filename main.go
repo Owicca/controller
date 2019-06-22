@@ -28,39 +28,47 @@ type JR struct {
 
 var (
 	FileNameList []file
+	Dir          *string
+	Port         *string
 )
 
 func main() {
-	dir := flag.String("d", "./", "Directory to serve")
-	port := flag.String("p", "8080", "Port to serve")
+	Dir = flag.String("d", "./", "Directory to serve")
+	Port = flag.String("p", "8080", "Port to serve")
 	flag.Parse()
 
-	err := filepath.Walk(*dir, Listdir)
-	if err != nil {
-		log.Fatal(err)
-	}
+	WalkTheWalk()
 
 	r := mux.NewRouter()
+	r.Use(RefreshDirList)
 	r.HandleFunc("/", Index)
+	serveFile := r.PathPrefix("/items/").Subrouter()
+	serveFile.HandleFunc("/{id}/", ServeFile).Methods("GET")
+
 	items := r.PathPrefix("/items/").Subrouter()
 	items.Use(SetJson)
-
 	items.HandleFunc("/", ServeList).Methods("GET")
-	items.HandleFunc("/{id}/", ServeFile).Methods("GET")
 	items.HandleFunc("/{id}/", DeleteFile).Methods("DELETE")
 
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	s := http.Server{
-		Addr:           ":" + *port,
+		Addr:           ":" + *Port,
 		Handler:        r,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	log.Printf("Serving on %s dir %s", *port, *dir)
+	log.Printf("Serving on %s dir %s", *Port, *Dir)
 	log.Fatal(s.ListenAndServe())
+}
+
+func RefreshDirList(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		WalkTheWalk()
+		next.ServeHTTP(w, r)
+	})
 }
 
 func SetMime(next http.Handler) http.Handler {
@@ -77,6 +85,14 @@ func SetJson(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		next.ServeHTTP(w, r)
 	})
+}
+
+func WalkTheWalk() {
+	FileNameList = nil
+	err := filepath.Walk(*Dir, Listdir)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func Listdir(path string, info os.FileInfo, err error) error {
@@ -114,7 +130,11 @@ func ServeFile(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	intId, _ := strconv.Atoi(params["id"])
 
-	http.ServeFile(w, r, FileNameList[intId].Href)
+	if len(FileNameList) >= intId {
+		http.ServeFile(w, r, FileNameList[intId].Href)
+	} else {
+		http.NotFound(w, r)
+	}
 }
 
 func DeleteFile(w http.ResponseWriter, r *http.Request) {
@@ -139,6 +159,7 @@ func DeleteFile(w http.ResponseWriter, r *http.Request) {
 			response.Data = res
 			js, _ := json.Marshal(response)
 			fmt.Fprintf(w, "%s", js)
+			WalkTheWalk()
 		}
 	}
 }

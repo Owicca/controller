@@ -16,32 +16,74 @@ let Controller = function() {
 
 var controller = new Controller();
 
-class List extends React.Component {
+class ListElement extends React.Component {
   constructor(props) {
     super(props);
+
+    this.deleteElement = this.deleteElement.bind(this);
+  }
+
+  deleteElement(id) {
+    let confirmation = confirm("Are you sure you want to delete: "+this.props.name+"?");
+
+    if (this.props.canDelete && confirmation) {
+      this.props.deleteElement(this.props.id);
+    }
   }
 
   render() {
-    let elements = this.props.elements.map(elem => e(ListElement, {key: elem.id, id: elem.id, name: elem.name, canDelete: true}));
+    let deleteBut = this.props.canDelete ? e("button", {onClick: (e) => this.deleteElement(this.props.id)}, "Delete") : null;
+    let name = e("span", null, this.props.name);
+    let href = "/items/"+this.props.id+"/";
+    let link = e("a", {id: this.props.id, href: href, target: "_blank"}, name);
+
+    return e("li", null, link, deleteBut);
+  }
+}
+
+class List extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      elements: [],
+    };
+
+    this.deleteElement = this.deleteElement.bind(this);
+  }
+
+  componentDidMount() {
+    this.props.getElements().then(js => {
+      if (js.success == true) {
+        this.setState({
+          elements: js.data
+        });
+      } else {
+        alert(js.error);
+      }
+    });
+  }
+
+  deleteElement(id) {
+    this.props.deleteElement(id).then((js) => {
+      if(js.success == true) {
+        let elem = this.state.elements;
+        elem.splice(id, 1);
+
+        this.setState({
+          elements: elem
+        });
+      } else {
+        alert(js.error);
+      }
+    });
+  }
+
+  render() {
+    let elements = this.state.elements.map((elem, idx) => e(ListElement, {key: idx, id: idx, name: elem.name, canDelete: true, deleteElement: this.deleteElement}));
 
     return e("ul", {id: "list"}, elements);
   }
 
-}
-
-class ListElement extends React.Component {
-  constructor(props) {
-    super(props);
-  }
-
-  render() {
-    let deleteBut = this.props.canDelete ? e("button", {onClick: (e) => console.log("Delete #"+this.props.id)}, "Delete") : null;
-    let name = e("span", null, this.props.name);
-    let href = "/v/"+this.props.id+"/";
-    let link = e("a", {id: this.props.id, href: href}, name);
-
-    return e("li", null, link, deleteBut);
-  }
 }
 
 class App extends React.Component {
@@ -50,9 +92,7 @@ class App extends React.Component {
   }
 
   render() {
-    let elements = this.props.controller.getElements();
-
-    return e(List, {elements: elements});
+    return e(List, {getElements: controller.getElements, deleteElement: controller.deleteElement});
   }
 }
 
