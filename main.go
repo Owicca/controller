@@ -7,18 +7,12 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strconv"
 	"time"
+
+	m "github.com/Owicca/controller/models"
 
 	"github.com/gorilla/mux"
 )
-
-type file struct {
-	Name string `json:"name"`
-	Href string `json:"href"`
-}
 
 type JR struct {
 	Success bool        `json:"success"`
@@ -27,9 +21,9 @@ type JR struct {
 }
 
 var (
-	FileNameList []file
-	Dir          *string
-	Port         *string
+	Dir    *string
+	Port   *string
+	Walker *m.Walker
 )
 
 func main() {
@@ -37,7 +31,8 @@ func main() {
 	Port = flag.String("p", "8080", "Port to serve")
 	flag.Parse()
 
-	WalkTheWalk()
+	Walker = m.NewWalker()
+	Walker.ParsePath(Dir)
 
 	r := mux.NewRouter()
 	r.Use(RefreshDirList)
@@ -66,7 +61,11 @@ func main() {
 
 func RefreshDirList(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		WalkTheWalk()
+		if Walker.TTL == 0 {
+			Walker.ParsePath(Dir)
+			Walker.TTL = 10
+		}
+		Walker.TTL--
 		next.ServeHTTP(w, r)
 	})
 }
@@ -87,79 +86,63 @@ func SetJson(next http.Handler) http.Handler {
 	})
 }
 
-func WalkTheWalk() {
-	FileNameList = nil
-	err := filepath.Walk(*Dir, Listdir)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func Listdir(path string, info os.FileInfo, err error) error {
-	if err != nil {
-		return err
-	}
-	if !info.IsDir() {
-		FileNameList = append(FileNameList, file{
-			Name: info.Name(),
-			Href: path,
-		})
-	}
-
-	return nil
-}
-
 func Index(w http.ResponseWriter, r *http.Request) {
-	t, _ := template.ParseFiles("index.tpl")
+	t, _ := template.ParseFiles("views/index.tpl")
 	t.Execute(w, nil)
 }
 
 func ServeList(w http.ResponseWriter, r *http.Request) {
-	res := JR{Success: true, Data: FileNameList, Error: nil}
+	res := JR{Success: true, Data: nil, Error: nil}
+	wJson, err := Walker.FSTree.ToJson()
+	if err != nil {
+		res.Success = false
+		res.Error = err
+	}
+	res.Data = wJson
 
 	js, err := json.Marshal(res)
 	if err != nil {
 		res.Success = false
-		log.Println(res)
-	} else {
-		w.Write(js)
 	}
+	w.Write(js)
 }
 
 func ServeFile(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	intId, _ := strconv.Atoi(params["id"])
+	//params := mux.Vars(r)
+	//intId, _ := strconv.Atoi(params["id"])
 
-	if len(FileNameList) >= intId {
-		http.ServeFile(w, r, FileNameList[intId].Href)
-	} else {
-		http.NotFound(w, r)
-	}
+	//	if len(FileNameList) >= intId {
+	//		http.ServeFile(w, r, FileNameList[intId].Href)
+	//	} else {
+	http.NotFound(w, r)
+	//	}
 }
 
 func DeleteFile(w http.ResponseWriter, r *http.Request) {
 	response := JR{Success: false, Data: nil, Error: nil}
-	params := mux.Vars(r)
-	intId, _ := strconv.Atoi(params["id"])
+	//params := mux.Vars(r)
+	//intId, _ := strconv.Atoi(params["id"])
 
-	pathErr := os.Remove(FileNameList[intId].Href)
-	if pathErr != nil {
-		response.Error = pathErr.Error()
-		js, _ := json.Marshal(response)
-		fmt.Fprintf(w, "%s", js)
-	} else {
-		response.Success = true
-		res, err := json.Marshal(response)
-		if err != nil {
-			response.Success = false
-			response.Error = err.Error()
-			log.Println(response)
-		} else {
-			response.Success = true
-			response.Data = res
-			js, _ := json.Marshal(response)
-			fmt.Fprintf(w, "%s", js)
-			WalkTheWalk()
-		}
-	}
+	js, _ := json.Marshal(response)
+	fmt.Fprintf(w, "%s", js)
+	//	pathErr := os.Remove(FileNameList[intId].Href)
+	//	if pathErr != nil {
+	//		response.Error = pathErr.Error()
+	//		js, _ := json.Marshal(response)
+	//		fmt.Fprintf(w, "%s", js)
+	//	} else {
+	//		response.Success = true
+	//		res, err := json.Marshal(response)
+	//		if err != nil {
+	//			response.Success = false
+	//			response.Error = err.Error()
+	//			log.Println(response)
+	//		} else {
+	//			response.Success = true
+	//			response.Data = res
+	//			js, _ := json.Marshal(response)
+	//			fmt.Fprintf(w, "%s", js)
+	//			WalkTheWalk()
+	//		}
+	//	}
 }

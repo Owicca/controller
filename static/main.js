@@ -32,7 +32,7 @@ class ListElement extends React.Component {
   }
 
   render() {
-    let deleteBut = this.props.canDelete ? e("button", {onClick: (e) => this.deleteElement(this.props.id)}, "Delete") : null;
+    let deleteBut = "";//this.props.canDelete ? e("button", {onClick: (e) => this.deleteElement(this.props.id)}, "Delete") : null;
     let name = e("span", null, this.props.name);
     let href = "/items/"+this.props.id+"/";
     let link = e("a", {id: this.props.id, href: href, target: "_blank"}, name);

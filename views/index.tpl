@@ -7,4 +7,20 @@
     <script src="/static/react-dom.js"></script>
     <script src="/static/main.js"></script>
   </body>
+  <style>
+  ul {
+    list-style-type: none;
+  }
+  ul li {
+    margin: 15px 0;
+  }
+  a {
+    padding: 5px 10px;
+    border: 1px solid gray;
+    border-radius: 10px;
+  }
+  a:hover {
+    background: gray;
+  }
+  </style>
 </html>
