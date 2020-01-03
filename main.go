@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/Owicca/controller/models/response"
@@ -26,6 +27,13 @@ func main() {
 	Port = flag.String("p", "8080", "Port to serve")
 	flag.Parse()
 
+	if port, check := os.LookupEnv("CONTROLLER_PORT"); check == true {
+		*Port = port
+	}
+	if dir, check := os.LookupEnv("CONTROLLER_DIR"); check == true {
+		*Dir = dir
+	}
+
 	Walker = walker.NewWalker()
 	Walker.ParsePath(Dir)
 
@@ -43,7 +51,7 @@ func main() {
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	s := http.Server{
-		Addr:           ":" + *Port,
+		Addr:           "0.0.0.0:" + *Port,
 		Handler:        r,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
