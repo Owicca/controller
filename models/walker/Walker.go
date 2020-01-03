@@ -39,6 +39,17 @@ func (w Walker) setupExtensions() {
 	for scanner.Scan() {
 		w.Extensions[scanner.Text()] = true
 	}
+
+	file, err = os.Open("config/image_extensions.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	scanner = bufio.NewScanner(file)
+	for scanner.Scan() {
+		w.Extensions[scanner.Text()] = true
+	}
 }
 
 func (w Walker) ParsePath(Dir *string) {
