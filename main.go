@@ -9,21 +9,16 @@ import (
 	"net/http"
 	"time"
 
-	m "github.com/Owicca/controller/models"
+	"github.com/Owicca/controller/models/response"
+	"github.com/Owicca/controller/models/walker"
 
 	"github.com/gorilla/mux"
 )
 
-type JR struct {
-	Success bool        `json:"success"`
-	Data    interface{} `json:"data"`
-	Error   interface{} `json:"error"`
-}
-
 var (
 	Dir    *string
 	Port   *string
-	Walker *m.Walker
+	Walker *walker.Walker
 )
 
 func main() {
@@ -31,7 +26,7 @@ func main() {
 	Port = flag.String("p", "8080", "Port to serve")
 	flag.Parse()
 
-	Walker = m.NewWalker()
+	Walker = walker.NewWalker()
 	Walker.ParsePath(Dir)
 
 	r := mux.NewRouter()
@@ -92,7 +87,7 @@ func Index(w http.ResponseWriter, r *http.Request) {
 }
 
 func ServeList(w http.ResponseWriter, r *http.Request) {
-	res := JR{Success: true, Data: nil, Error: nil}
+	res := response.Res{Success: true, Data: nil, Error: nil}
 	wJson, err := Walker.FSTree.ToJson()
 	if err != nil {
 		res.Success = false
@@ -119,7 +114,7 @@ func ServeFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteFile(w http.ResponseWriter, r *http.Request) {
-	response := JR{Success: false, Data: nil, Error: nil}
+	response := response.Res{Success: false, Data: nil, Error: nil}
 	//params := mux.Vars(r)
 	//intId, _ := strconv.Atoi(params["id"])
 
