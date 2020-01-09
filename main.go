@@ -38,7 +38,7 @@ func main() {
 	Walker.ParsePath(Dir)
 
 	r := mux.NewRouter()
-	r.Use(RefreshDirList)
+	//r.Use(RefreshDirList)
 	r.HandleFunc("/", Index)
 	serveFile := r.PathPrefix("/items/").Subrouter()
 	serveFile.HandleFunc("/{id}/", ServeFile).Methods("GET")
@@ -62,6 +62,7 @@ func main() {
 	log.Fatal(s.ListenAndServe())
 }
 
+// refresh Walker.FSTree every 10 requests
 func RefreshDirList(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if Walker.TTL == 0 {
@@ -73,17 +74,18 @@ func RefreshDirList(next http.Handler) http.Handler {
 	})
 }
 
-func SetMime(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Println(*r.URL)
-		//w.Header().Set("Content-Type", "application/json")
-		next.ServeHTTP(w, r)
-	})
-}
+//func SetMime(next http.Handler) http.Handler {
+//	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+//		log.Println(*r.URL)
+//		w.Header().Set("Content-Type", "application/json")
+//		next.ServeHTTP(w, r)
+//	})
+//}
 
 func SetJson(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		// security risk to allow cors from "*" TODO
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		next.ServeHTTP(w, r)
 	})
@@ -94,6 +96,7 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	t.Execute(w, nil)
 }
 
+// json the FSTree and format the response
 func ServeList(w http.ResponseWriter, r *http.Request) {
 	res := response.Res{Success: true, Data: nil, Error: nil}
 	wJson, err := Walker.FSTree.ToJson()
