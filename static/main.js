@@ -72,6 +72,7 @@ class List extends React.Component {
         this.setState({
           elements: elem
         });
+        window.location.reload();
       } else {
         alert(js.error);
       }

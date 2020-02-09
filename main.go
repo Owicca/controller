@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gobuffalo/packr"
 	"github.com/gorilla/mux"
 )
 
@@ -30,6 +31,7 @@ var (
 	FileNameList []file
 	Dir          *string
 	Port         *string
+	StaticBox    = packr.NewBox("./static/")
 )
 
 func main() {
@@ -50,7 +52,7 @@ func main() {
 	items.HandleFunc("/", ServeList).Methods("GET")
 	items.HandleFunc("/{id}/", DeleteFile).Methods("DELETE")
 
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(StaticBox)))
 
 	s := http.Server{
 		Addr:           ":" + *Port,
@@ -110,8 +112,14 @@ func Listdir(path string, info os.FileInfo, err error) error {
 }
 
 func Index(w http.ResponseWriter, r *http.Request) {
-	t, _ := template.ParseFiles("index.tpl")
-	t.Execute(w, nil)
+	tpl, err := StaticBox.FindString("index.html")
+	if err != nil {
+		log.Println(err)
+		http.NotFound(w, r)
+	} else {
+		t, _ := template.New("index").Parse(tpl)
+		t.Execute(w, nil)
+	}
 }
 
 func ServeList(w http.ResponseWriter, r *http.Request) {
