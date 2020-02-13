@@ -1,7 +1,0 @@
-.jpeg
-.jpg
-.exif
-.tiff
-.gif
-.bmp
-.png

@@ -9,37 +9,57 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"errors"
 
 	"github.com/Owicca/controller/models/dir"
 	"github.com/Owicca/controller/models/file"
 	"github.com/Owicca/controller/models/response"
 	"github.com/Owicca/controller/models/walker"
+	"github.com/Owicca/controller/config"
 
 	"github.com/gorilla/mux"
+	"path/filepath"
 )
 
 var (
 	Dir         *string
 	Port        *string
+	Host 		*string
 	Environment *string
+	MimeTypes   map[string]string
 	Walker      *walker.Walker
+	DummyPseudo = "o4FWKxKQkj"
 )
 
 func main() {
-	Dir = flag.String("d", "./", "Directory to serve")
-	Port = flag.String("p", "8080", "Port to serve")
-	Environment = flag.String("e", "DEVEL", "Environment")
-	flag.Parse()
+	MimeTypes = config.NewMimeTypes()
 
 	if port, check := os.LookupEnv("CONTROLLER_PORT"); check == true {
 		*Port = port
+	} else {
+		*Port = "8080"
 	}
 	if dir, check := os.LookupEnv("CONTROLLER_DIR"); check == true {
 		*Dir = dir
+	} else {
+		*Dir = "./"
 	}
 	if env, check := os.LookupEnv("CONTROLLER_ENV"); check == true {
 		*Environment = env
+	} else {
+		*Environment = "DEVEL"
 	}
+	if host, check := os.LookupEnv("CONTROLLER_HOST"); check == true {
+		*Host = host
+	} else {
+		*Host = "127.0.0.1"
+	}
+
+	Dir = flag.String("d", *Dir, "Directory to serve")
+	Port = flag.String("p", *Port, "Port to serve")
+	Environment = flag.String("e", *Environment, "Environment")
+	Host = flag.String("h", *Host, "Host")
+	flag.Parse()
 
 	Walker = walker.NewWalker()
 	Walker.ParsePath(Dir)
@@ -47,16 +67,16 @@ func main() {
 	r := mux.NewRouter()
 	r.Use(RefreshDirList)
 	r.HandleFunc("/", Index)
-	items := r.PathPrefix("/items/").Subrouter()
-	items.Use(SetJson)
-	items.HandleFunc("/", ServeList).Methods("GET")
-	items.HandleFunc("/{pseudoname}/", ServeFile).Methods("GET")
-	items.HandleFunc("/{pseudoname}/", DeleteFile).Methods("DELETE")
-
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
+	items := r.PathPrefix("/items/").Subrouter()
+	items.HandleFunc("/{pseudoname}/", ServeFile).Methods("GET")//ServeFile returns a byte stream, not a json
+	items.Use(SetJson)
+	items.HandleFunc("/", ServeList).Methods("GET")
+	items.HandleFunc("/{pseudoname}/", DeleteFile).Methods("DELETE")
+
 	s := http.Server{
-		Addr:           "0.0.0.0:" + *Port,
+		Addr:           *Host + ":" + *Port,
 		Handler:        r,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
@@ -72,20 +92,15 @@ func RefreshDirList(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if Walker.TTL == 0 {
 			Walker.ParsePath(Dir)
+			if *Environment == "DEVEL" {
+				log.Println("Refreshed Walker.FSTree")
+			}
 			Walker.TTL = 10
 		}
 		Walker.TTL--
 		next.ServeHTTP(w, r)
 	})
 }
-
-//func SetMime(next http.Handler) http.Handler {
-//	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//		log.Println(*r.URL)
-//		w.Header().Set("Content-Type", "application/json")
-//		next.ServeHTTP(w, r)
-//	})
-//}
 
 func SetJson(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,24 +128,54 @@ func ServeList(w http.ResponseWriter, r *http.Request) {
 	w.Write(js)
 }
 
+/*
+* find a file
+* set response mimetype based on file extension
+* server file content
+*/
 func ServeFile(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	param := params["pseudoname"]
-	log.Println(param)
-	for _, child := range Walker.FSTree.(dir.Dir).Children {
-		if fl, ok := child.(file.File); ok {
-			if fl.Info.PseudoName == param {
-				log.Println(string(child.GetPath()))
-				http.ServeFile(w, r, string(child.GetPath()))
-				break
+	splitPseudo := Splitter(param)
+	filePath, fErr := FindFile(Walker.FSTree.(dir.Dir), splitPseudo)
+	if fErr != nil {
+		log.Println(fErr)
+		http.NotFound(w, r)
+	} else {
+		ext := filepath.Ext(filePath)
+		mimeType := "application/octet-stream"
+		if ext != "" {
+			if mime, ok := MimeTypes[ext]; ok {
+				mimeType = mime
 			}
-		} else if child.(dir.Dir).Info.PseudoName == param {
-			log.Println(string(child.GetPath()))
-			http.ServeFile(w, r, string(child.GetPath()))
-			break
+		}
+
+		log.Println("Serve: ", filePath, "\nMime: ", mimeType)
+		w.Header().Set("Content-Type", mimeType)
+		http.ServeFile(w, r, filePath)
+	}
+}
+
+/*
+* return file path
+* or recurse in folder to look for file path
+*/
+func FindFile(Parent dir.Dir, Paths []string) (string, error) {
+	if len(Paths) > 0 {
+		child, ok := Parent.Children[Paths[0]]
+		if ok {
+			file, check := child.(file.File)
+			if check {
+				// log.Println("Found: ", file.Info.Name, "\nPath: ", string(file.GetPath()))
+				return string(file.GetPath()), nil
+			} else {
+				// log.Println("Recurse in dir: ", child.(dir.Dir).Info.Name)
+				FindFile(child.(dir.Dir), Paths[1:])
+			}
 		}
 	}
-	http.NotFound(w, r)
+
+	return "", errors.New("File not found")
 }
 
 func DeleteFile(w http.ResponseWriter, r *http.Request) {
@@ -160,4 +205,16 @@ func DeleteFile(w http.ResponseWriter, r *http.Request) {
 	//			WalkTheWalk()
 	//		}
 	//	}
+}
+
+func Splitter(Pseudo string) []string {
+	var items []string
+	lowerLimit := 1
+	length := 5
+	for lowerLimit - 1 + length <= len(Pseudo) {
+		items = append(items, Pseudo[lowerLimit-1:lowerLimit-1 + length])
+		lowerLimit = lowerLimit+5
+	}
+
+	return items
 }

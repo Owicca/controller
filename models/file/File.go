@@ -2,6 +2,7 @@ package file
 
 import (
 	"encoding/json"
+	"os"
 
 	"github.com/Owicca/controller/models/fileinfo"
 )
@@ -17,7 +18,7 @@ func (f File) ToJson() ([]byte, error) {
 }
 
 func (f File) GetPath() []byte {
-	path := append([]byte(f.Info.Path), []byte{'/'}...)
+	path := append([]byte(f.Info.Path), os.PathSeparator)
 	path = append(path, []byte(f.Info.Name)...)
 
 	return path

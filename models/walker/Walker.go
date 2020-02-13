@@ -1,7 +1,6 @@
 package walker
 
 import (
-	"bufio"
 	"crypto/sha1"
 	"encoding/base64"
 	"errors"
@@ -14,6 +13,7 @@ import (
 	fl "github.com/Owicca/controller/models/file"
 	"github.com/Owicca/controller/models/fileinfo"
 	"github.com/Owicca/controller/models/fsitem"
+	"github.com/Owicca/controller/config"
 )
 
 type Walker struct {
@@ -34,32 +34,18 @@ func NewWalker() *Walker {
 
 // load supported video/image extensions
 func (w Walker) setupExtensions() {
-	file, err := os.Open("config/video_extensions.txt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
+	array := make([]string, 0)
+	array = append(array, config.NewVideoExtensions()...)
+	array = append(array, config.NewImageExtensions()...)
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		w.Extensions[scanner.Text()] = true
-	}
-
-	file, err = os.Open("config/image_extensions.txt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	scanner = bufio.NewScanner(file)
-	for scanner.Scan() {
-		w.Extensions[scanner.Text()] = true
+	for _, ext := range array {
+		w.Extensions[ext] = true
 	}
 }
 
 func (w *Walker) ParsePath(Dir *string) (bool, error) {
 	log.Println("Started walking!")
-	tree, err := ParseDir(*Dir, *Dir)
+	tree, err := ParseDir(*Dir, *Dir, []byte(""))
 	if err != nil {
 		pErr := errors.New(fmt.Sprintf("Couldn't parse dir %s (%s)", *Dir, err))
 		log.Println(pErr.Error())
@@ -75,7 +61,7 @@ func (w *Walker) ParsePath(Dir *string) (bool, error) {
 * recursivelly parse sub directories
 * return built hierarchy
  */
-func ParseDir(Dir string, workingDir string) (dir.Dir, error) {
+func ParseDir(Dir string, workingDir string, DirPathPseudo []byte) (dir.Dir, error) {
 	var dr = dir.Dir{
 		Children: make(map[string]fsitem.FSItem),
 		Info: fileinfo.FileInfo{
@@ -111,7 +97,7 @@ func ParseDir(Dir string, workingDir string) (dir.Dir, error) {
 
 	dr.Info.Name = info.Name()
 	dr.Info.PseudoName, _, _ = GetPseudo(info.Name())
-	log.Printf("Dir: %v\n", dr.Info)
+	// log.Printf("Dir: %v\n", dr.Info)
 
 	children, err := file.Readdir(0)
 	if err != nil {
@@ -124,25 +110,30 @@ func ParseDir(Dir string, workingDir string) (dir.Dir, error) {
 		if ch.IsDir() {
 			subDirs = append(subDirs, ch.Name())
 		} else {
-			ch_pseudo, _, _ := GetPseudo(ch.Name())
-			dr.Children[ch_pseudo] = fl.File{
+			chPseudo, _, _ := GetPseudo(ch.Name())
+			finalPseudo := GetPathPseudo(string(DirPathPseudo), chPseudo)
+			dr.Children[string(finalPseudo)] = fl.File{
 				Info: fileinfo.FileInfo{
 					Name:       ch.Name(),
-					PseudoName: ch_pseudo,
+					PseudoName: chPseudo,
 					Path:       workingDir,
 				},
 			}
-			log.Printf("File: %s %s %s\n", ch.Name(), ch_pseudo, workingDir)
+			// log.Printf("=====File: %s (%s %s %s) %s\n", ch.Name(), DirPathPseudo, chPseudo, string(finalPseudo), workingDir)
 		}
 	}
 
 	if len(subDirs) > 0 {
 		for _, subDir := range subDirs {
-			subDirTree, err := ParseDir(subDir, workingDir)
+			psd , _ , _ := GetPseudo(subDir)
+			subDirTree, err := ParseDir(subDir, workingDir, []byte(psd))
 			if err != nil {
 				log.Println("In subdirs range\n", err)
 			}
-			dr.Children[subDirTree.Info.PseudoName] = subDirTree
+
+			finalPseudo := GetPathPseudo(string(DirPathPseudo), psd)
+			// log.Println(subDir, psd, string(finalPseudo))
+			dr.Children[string(finalPseudo)] = subDirTree
 		}
 	}
 
@@ -157,4 +148,13 @@ func GetPseudo(str string) (string, []byte, error) {
 	asString := base64.URLEncoding.EncodeToString(hs)
 
 	return asString, hs, nil
+}
+
+func GetPathPseudo(parentPseudo string, childPseudo string) []byte {
+	pathPseudo := []byte(childPseudo)[:5]
+	parentByteArr := make([]byte, 0)
+	if len(parentPseudo) > 0 {
+		parentByteArr = []byte(parentPseudo)[:5]
+	}
+	return append(parentByteArr, pathPseudo...)
 }
