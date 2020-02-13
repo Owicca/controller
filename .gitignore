@@ -1,2 +1,4 @@
 main
 controller
+test/
+node_modules/

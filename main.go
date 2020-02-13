@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/Owicca/controller/models/dir"
+	"github.com/Owicca/controller/models/file"
 	"github.com/Owicca/controller/models/response"
 	"github.com/Owicca/controller/models/walker"
 
@@ -17,14 +19,16 @@ import (
 )
 
 var (
-	Dir    *string
-	Port   *string
-	Walker *walker.Walker
+	Dir         *string
+	Port        *string
+	Environment *string
+	Walker      *walker.Walker
 )
 
 func main() {
 	Dir = flag.String("d", "./", "Directory to serve")
 	Port = flag.String("p", "8080", "Port to serve")
+	Environment = flag.String("e", "DEVEL", "Environment")
 	flag.Parse()
 
 	if port, check := os.LookupEnv("CONTROLLER_PORT"); check == true {
@@ -33,20 +37,21 @@ func main() {
 	if dir, check := os.LookupEnv("CONTROLLER_DIR"); check == true {
 		*Dir = dir
 	}
+	if env, check := os.LookupEnv("CONTROLLER_ENV"); check == true {
+		*Environment = env
+	}
 
 	Walker = walker.NewWalker()
 	Walker.ParsePath(Dir)
 
 	r := mux.NewRouter()
-	//r.Use(RefreshDirList)
+	r.Use(RefreshDirList)
 	r.HandleFunc("/", Index)
-	serveFile := r.PathPrefix("/items/").Subrouter()
-	serveFile.HandleFunc("/{id}/", ServeFile).Methods("GET")
-
 	items := r.PathPrefix("/items/").Subrouter()
 	items.Use(SetJson)
 	items.HandleFunc("/", ServeList).Methods("GET")
-	items.HandleFunc("/{id}/", DeleteFile).Methods("DELETE")
+	items.HandleFunc("/{pseudoname}/", ServeFile).Methods("GET")
+	items.HandleFunc("/{pseudoname}/", DeleteFile).Methods("DELETE")
 
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
@@ -92,19 +97,14 @@ func SetJson(next http.Handler) http.Handler {
 }
 
 func Index(w http.ResponseWriter, r *http.Request) {
-	t, _ := template.ParseFiles("views/index.tpl")
+	t, _ := template.ParseFiles("static/index.html")
 	t.Execute(w, nil)
 }
 
 // json the FSTree and format the response
 func ServeList(w http.ResponseWriter, r *http.Request) {
 	res := response.Res{Success: true, Data: nil, Error: nil}
-	wJson, err := Walker.FSTree.ToJson()
-	if err != nil {
-		res.Success = false
-		res.Error = err
-	}
-	res.Data = wJson
+	res.Data = Walker.FSTree
 
 	js, err := json.Marshal(res)
 	if err != nil {
@@ -114,14 +114,23 @@ func ServeList(w http.ResponseWriter, r *http.Request) {
 }
 
 func ServeFile(w http.ResponseWriter, r *http.Request) {
-	//params := mux.Vars(r)
-	//intId, _ := strconv.Atoi(params["id"])
-
-	//	if len(FileNameList) >= intId {
-	//		http.ServeFile(w, r, FileNameList[intId].Href)
-	//	} else {
+	params := mux.Vars(r)
+	param := params["pseudoname"]
+	log.Println(param)
+	for _, child := range Walker.FSTree.(dir.Dir).Children {
+		if fl, ok := child.(file.File); ok {
+			if fl.Info.PseudoName == param {
+				log.Println(string(child.GetPath()))
+				http.ServeFile(w, r, string(child.GetPath()))
+				break
+			}
+		} else if child.(dir.Dir).Info.PseudoName == param {
+			log.Println(string(child.GetPath()))
+			http.ServeFile(w, r, string(child.GetPath()))
+			break
+		}
+	}
 	http.NotFound(w, r)
-	//	}
 }
 
 func DeleteFile(w http.ResponseWriter, r *http.Request) {

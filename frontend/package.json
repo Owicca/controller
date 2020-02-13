@@ -1,0 +1,24 @@
+{
+  "name": "controller_client",
+  "version": "0.1.0",
+  "description": "controller spa client",
+  "main": "public/js/main.js",
+  "scripts": {
+    "build": "webpack --config webpack.config.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@babel/core": "^7.8.4",
+    "@babel/preset-env": "^7.8.4",
+    "@babel/preset-react": "^7.8.3",
+    "babel-loader": "^8.0.6",
+    "raw-loader": "^4.0.0",
+    "webpack": "^4.41.5"
+  },
+  "dependencies": {
+    "react": "^16.12.0",
+    "react-dom": "^16.12.0"
+  }
+}

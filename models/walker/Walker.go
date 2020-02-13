@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/Owicca/controller/models/dir"
 	fl "github.com/Owicca/controller/models/file"
@@ -56,10 +57,16 @@ func (w Walker) setupExtensions() {
 	}
 }
 
-func (w Walker) ParsePath(Dir *string) {
+func (w *Walker) ParsePath(Dir *string) (bool, error) {
 	log.Println("Started walking!")
-	w.FSTree, _ = ParseDir(*Dir, nil)
-	w.FSTree.ToJson()
+	tree, err := ParseDir(*Dir, *Dir)
+	if err != nil {
+		pErr := errors.New(fmt.Sprintf("Couldn't parse dir %s (%s)", *Dir, err))
+		log.Println(pErr.Error())
+		return false, pErr
+	}
+	w.FSTree = tree
+	return true, nil
 }
 
 /*
@@ -68,18 +75,28 @@ func (w Walker) ParsePath(Dir *string) {
 * recursivelly parse sub directories
 * return built hierarchy
  */
-func ParseDir(Dir string, parent fsitem.FSItem) (dir.Dir, error) {
+func ParseDir(Dir string, workingDir string) (dir.Dir, error) {
 	var dr = dir.Dir{
 		Children: make(map[string]fsitem.FSItem),
 		Info: fileinfo.FileInfo{
 			Name:       "",
 			PseudoName: "",
-			Parent:     parent,
+			Path:       workingDir,
 		},
 	}
-	subDirs := make([]string, 0)
 
-	file, fErr := os.Open(Dir)
+	subDirs := make([]string, 0)
+	var (
+		file *os.File
+		fErr error
+	)
+	if Dir == workingDir {
+		file, fErr = os.Open(Dir)
+	} else {
+		path := filepath.Join(workingDir, Dir)
+		file, fErr = os.Open(path)
+		workingDir = path
+	}
 	info, iErr := file.Stat()
 	if fErr != nil || iErr != nil {
 		var err string
@@ -92,12 +109,9 @@ func ParseDir(Dir string, parent fsitem.FSItem) (dir.Dir, error) {
 		return dr, cErr
 	}
 
-	if parent != nil {
-		dr.Info.Name = info.Name()
-	} else {
-		dr.Info.Name = Dir
-	}
+	dr.Info.Name = info.Name()
 	dr.Info.PseudoName, _, _ = GetPseudo(info.Name())
+	log.Printf("Dir: %v\n", dr.Info)
 
 	children, err := file.Readdir(0)
 	if err != nil {
@@ -115,15 +129,19 @@ func ParseDir(Dir string, parent fsitem.FSItem) (dir.Dir, error) {
 				Info: fileinfo.FileInfo{
 					Name:       ch.Name(),
 					PseudoName: ch_pseudo,
-					Parent:     dr,
+					Path:       workingDir,
 				},
 			}
+			log.Printf("File: %s %s %s\n", ch.Name(), ch_pseudo, workingDir)
 		}
 	}
 
 	if len(subDirs) > 0 {
-		for _, subDirName := range subDirs {
-			var subDirTree, _ = ParseDir(string(dr.GetPath([]byte(subDirName))), &dr)
+		for _, subDir := range subDirs {
+			subDirTree, err := ParseDir(subDir, workingDir)
+			if err != nil {
+				log.Println("In subdirs range\n", err)
+			}
 			dr.Children[subDirTree.Info.PseudoName] = subDirTree
 		}
 	}
@@ -140,21 +158,3 @@ func GetPseudo(str string) (string, []byte, error) {
 
 	return asString, hs, nil
 }
-
-//func NewFSItem(parent fsitem.FSItem, info os.FileInfo) fsitem.FSItem {
-//	if !info.IsDir() {
-//		return &fl.File{
-//			Info: fileinfo.FileInfo{
-//				Name:   info.Name(),
-//				Parent: parent,
-//			},
-//		}
-//	}
-//	return &dir.Dir{
-//		Children: make(map[string]fsitem.FSItem),
-//		Info: fileinfo.FileInfo{
-//			Name:   info.Name(),
-//			Parent: parent,
-//		},
-//	}
-//}
