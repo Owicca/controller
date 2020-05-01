@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -139,6 +140,7 @@ func ServeFile(w http.ResponseWriter, r *http.Request) {
 	intId, _ := strconv.Atoi(params["id"])
 
 	if len(FileNameList) >= intId {
+		w.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(FileNameList[intId].Href)))
 		http.ServeFile(w, r, FileNameList[intId].Href)
 	} else {
 		http.NotFound(w, r)
